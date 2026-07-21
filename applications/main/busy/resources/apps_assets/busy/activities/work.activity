@@ -1,0 +1,18 @@
+{
+  "sort_order": 30,
+  "title": "Work",
+  "id": "b1a70000-0000-4000-8000-000000000003",
+  "profile_timestamp_ms": 0,
+  "timer_settings": {
+    "type": "INTERVAL",
+    "interval_work_ms": 1500000,
+    "interval_rest_ms": 300000,
+    "interval_work_cycles_count": 4,
+    "is_autostart_enabled": false
+  },
+  "busy_bar_settings": {
+    "theme": "flow",
+    "show_work_phase_only": false,
+    "trigger_smart_home": false
+  }
+}

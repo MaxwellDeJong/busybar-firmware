@@ -1,0 +1,14 @@
+{
+  "sort_order": 50,
+  "title": "Exercise",
+  "id": "b1a70000-0000-4000-8000-000000000005",
+  "profile_timestamp_ms": 0,
+  "timer_settings": {
+    "type": "INFINITE"
+  },
+  "busy_bar_settings": {
+    "theme": "flow",
+    "show_work_phase_only": false,
+    "trigger_smart_home": false
+  }
+}
