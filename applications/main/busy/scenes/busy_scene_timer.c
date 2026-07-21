@@ -138,7 +138,10 @@ static void busy_scene_timer_update_tick(BusyApp* instance) {
         }
     });
 
-    if(data->timer_mode != BusyTimerModeInfinite) {
+    // Only sound the end-of-phase cue at the end of a break (rest), not at the
+    // end of a work phase or a SIMPLE activity — so finishing an activity is
+    // silent while a break ending still prompts a return to work.
+    if(data->timer_mode != BusyTimerModeInfinite && data->timer_state == BusyTimerStateRest) {
         if(time_remain_s == 0) {
             audio_play_file(instance->audio, BUSY_SOUND_PATH("countdown_finish.snd"));
         } else if(time_remain_s <= COUNTDOWN_THRESHOLD_S) {

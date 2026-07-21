@@ -89,7 +89,8 @@ static void busy_scene_finish_on_enter(void* context) {
         }
     });
 
-    audio_play_file(instance->audio, BUSY_SOUND_PATH("session_completed.snd"));
+    // No completion sound: finishing an activity is silent (only a break ending
+    // plays a cue — see busy_scene_timer.c).
 
     busy_start_transition(instance);
 }
