@@ -81,6 +81,7 @@ typedef struct {
     BusyTimerState state;
     BusyTimerConfig config;
     uint32_t current_interval_idx;
+    uint32_t time_elapsed_s; /**< Live count-up time in the current activity. */
 } BusyTimerRunInfo;
 
 typedef struct {

@@ -19,6 +19,9 @@
 #define TEXT_DELAY_SHOW_MS (250)
 #define TEXT_DELAY_HIDE_MS (0)
 
+#define CAPTION_COUNTDOWN "LEFT"
+#define CAPTION_COUNTUP   "SPENT"
+
 #define MAIN_WIDTH_PX    (40)
 #define BG_GRAD_WIDTH_PX (10)
 
@@ -134,7 +137,7 @@ static void timer_label_lvgl_constructor(const lv_obj_class_t* class_p, lv_obj_t
     lv_obj_set_style_text_color(instance->seconds_label, lv_color_white(), LV_PART_MAIN);
 
     instance->bottom_label = lv_label_create(instance->main_layout);
-    lv_label_set_text(instance->bottom_label, "LEFT");
+    lv_label_set_text(instance->bottom_label, CAPTION_COUNTDOWN);
 }
 
 static void timer_label_lvgl_destructor(const lv_obj_class_t* class_p, lv_obj_t* obj) {
@@ -274,6 +277,12 @@ void timer_label_set_time(TimerLabel* instance, uint32_t time_s) {
         lv_obj_set_style_text_color(instance->seconds_label, lv_color_white(), LV_PART_MAIN);
         lv_obj_set_style_text_color(instance->bottom_label, lv_color_white(), LV_PART_MAIN);
     }
+}
+
+void timer_label_set_counting_up(TimerLabel* instance, bool counting_up) {
+    furi_check(instance);
+    lv_label_set_text(
+        instance->bottom_label, counting_up ? CAPTION_COUNTUP : CAPTION_COUNTDOWN);
 }
 
 void timer_label_set_preset(TimerLabel* instance, const TimerLabelPreset* preset) {

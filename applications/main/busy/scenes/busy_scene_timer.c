@@ -14,6 +14,8 @@
 #define TIMER_HIDDEN_TIME_MS (S_TO_MS(15))
 #define TIMER_SHOWN_TIME_MS  (S_TO_MS(5))
 
+#define ELAPSED_REFRESH_MS (S_TO_MS(1))
+
 #define TRANSITION_CLEAR_TIME_MS (100)
 
 typedef struct {
@@ -23,6 +25,7 @@ typedef struct {
     FuriPubSub* timer_pubsub;
     FuriPubSubSubscription* timer_sub;
     FuriEventLoopTimer* show_label_timer;
+    FuriEventLoopTimer* elapsed_timer;
     TimerIndicatorPreset custom_preset;
     BusyTimerMode timer_mode;
     BusyTimerMode prev_timer_mode;
@@ -108,31 +111,80 @@ static bool busy_scene_timer_has_label_tweaks(const BusySceneTimer* data) {
     return data->is_custom_theme && data->timer_state == BusyTimerStateWork;
 }
 
+// Write a time value (seconds) to the front label and the mirror-card footer.
+// The caller must hold the GUI lock (with_gui).
+static void busy_scene_timer_apply_time(BusyApp* instance, uint32_t time_s) {
+    BusySceneTimer* data =
+        scene_manager_get_scene_data(instance->scene_manager, BusyAppSceneIdTimer);
+
+    timer_label_set_time(data->timer_label, time_s);
+
+    const uint32_t h = S_TO_H(time_s);
+    const uint32_t m = S_TO_M(time_s - H_TO_S(h));
+    const uint32_t s = time_s - H_TO_S(h) - M_TO_S(m);
+
+    FuriString* footer_text =
+        (h > 0) ? furi_string_alloc_printf("%" PRIu32 ":%02" PRIu32 ":%02" PRIu32, h, m, s) :
+                  furi_string_alloc_printf("%02" PRIu32 ":%02" PRIu32, m, s);
+    mirror_card_set_footer_primary_text(instance->timer_card, furi_string_get_cstr(footer_text));
+    furi_string_free(footer_text);
+}
+
+// Pull the live count-up elapsed from the timer service (computed on demand from the
+// wall clock) and show it. Used for INFINITE activities, which emit no periodic tick.
+static void busy_scene_timer_refresh_elapsed(BusyApp* instance) {
+    BusySceneTimer* data =
+        scene_manager_get_scene_data(instance->scene_manager, BusyAppSceneIdTimer);
+
+    BusyTimerRunInfo run_info;
+    busy_timer_get_run_info(instance->busy_timer, &run_info);
+    data->time_elapsed_s = run_info.time_elapsed_s;
+
+    with_gui(instance->gui, { busy_scene_timer_apply_time(instance, run_info.time_elapsed_s); });
+}
+
+static void busy_scene_timer_elapsed_timer_callback(void* context) {
+    furi_assert(context);
+    busy_scene_timer_refresh_elapsed(context);
+}
+
+// An INFINITE activity has no timer-service tick to drive its count-up, so refresh the
+// on-demand elapsed once a second while it runs a custom theme in the work phase (the
+// same condition that enables the periodic reveal). Idempotent; safe to call anytime.
+static void busy_scene_timer_update_elapsed_refresh(BusyApp* instance) {
+    BusySceneTimer* data =
+        scene_manager_get_scene_data(instance->scene_manager, BusyAppSceneIdTimer);
+
+    const bool run = (data->timer_mode == BusyTimerModeInfinite) &&
+                     busy_scene_timer_has_label_tweaks(data) && !data->is_paused;
+
+    if(run) {
+        busy_scene_timer_refresh_elapsed(instance);
+        furi_event_loop_timer_start(data->elapsed_timer, ELAPSED_REFRESH_MS);
+    } else {
+        furi_event_loop_timer_stop(data->elapsed_timer);
+    }
+}
+
 static void busy_scene_timer_update_tick(BusyApp* instance) {
     BusySceneTimer* data =
         scene_manager_get_scene_data(instance->scene_manager, BusyAppSceneIdTimer);
 
     const uint32_t time_remain_s = data->time_remaining_s;
     const uint32_t time_elapsed_s = data->time_elapsed_s;
+    const bool is_infinite = (data->timer_mode == BusyTimerModeInfinite);
 
-    const float progress = (float)time_elapsed_s / (time_elapsed_s + time_remain_s);
+    // Bounded timers count down to the target; unbounded activities count up.
+    const uint32_t display_s = is_infinite ? time_elapsed_s : time_remain_s;
+    const float progress =
+        is_infinite ? 0.0f : (float)time_elapsed_s / (time_elapsed_s + time_remain_s);
 
     with_gui(instance->gui, {
         timer_indicator_set_progress(data->timer_indicator, progress);
-        timer_label_set_time(data->timer_label, time_remain_s);
+        busy_scene_timer_apply_time(instance, display_s);
 
-        uint32_t h = S_TO_H(time_remain_s);
-        uint32_t m = S_TO_M(time_remain_s - H_TO_S(h));
-        uint32_t s = time_remain_s - H_TO_S(h) - M_TO_S(m);
-
-        FuriString* mirror_card_footer_text =
-            (h > 0) ? furi_string_alloc_printf("%" PRIu32 ":%02" PRIu32 ":%02" PRIu32, h, m, s) :
-                      furi_string_alloc_printf("%02" PRIu32 ":%02" PRIu32, m, s);
-        mirror_card_set_footer_primary_text(
-            instance->timer_card, furi_string_get_cstr(mirror_card_footer_text));
-        furi_string_free(mirror_card_footer_text);
-
-        if(busy_scene_timer_has_label_tweaks(data) && time_remain_s == COUNTDOWN_THRESHOLD_S) {
+        if(busy_scene_timer_has_label_tweaks(data) && !is_infinite &&
+           time_remain_s == COUNTDOWN_THRESHOLD_S) {
             timer_label_show(data->timer_label, true);
             furi_event_loop_timer_start(data->show_label_timer, TIMER_SHOWN_TIME_MS);
         }
@@ -171,9 +223,15 @@ static void busy_scene_timer_update_timer_mode(BusyApp* instance) {
     data->is_mode_transition = (data->prev_timer_mode == BusyTimerModeInfinite);
 
     with_gui(instance->gui, {
+        timer_label_set_counting_up(
+            data->timer_label, data->timer_mode == BusyTimerModeInfinite);
+
         if(data->timer_mode == BusyTimerModeInfinite) {
-            widget_set_visible(timer_label_get_base(data->timer_label), false);
-            mirror_card_set_show_footer(instance->timer_card, false);
+            // Unbounded activities show a count-up timer, but only alongside a custom
+            // theme (which drives the periodic reveal); keep the default look otherwise.
+            const bool show_elapsed = data->is_custom_theme;
+            widget_set_visible(timer_label_get_base(data->timer_label), show_elapsed);
+            mirror_card_set_show_footer(instance->timer_card, show_elapsed);
 
         } else if(data->timer_mode == BusyTimerModeSimple) {
             widget_set_visible(timer_label_get_base(data->timer_label), true);
@@ -184,6 +242,8 @@ static void busy_scene_timer_update_timer_mode(BusyApp* instance) {
             mirror_card_set_show_footer(instance->timer_card, true);
         }
     });
+
+    busy_scene_timer_update_elapsed_refresh(instance);
 }
 
 static const TimerIndicatorPreset*
@@ -285,6 +345,8 @@ static void busy_scene_timer_update_timer_state(BusyApp* instance) {
 
     busy_scene_timer_update_priority(instance);
     busy_scene_timer_update_front_display_blanking(instance);
+
+    busy_scene_timer_update_elapsed_refresh(instance);
 }
 
 static void busy_scene_timer_clear_transition(BusyApp* instance) {
@@ -340,6 +402,8 @@ static void busy_scene_timer_handle_pause(BusyApp* instance) {
 
     busy_scene_timer_update_priority(instance);
     busy_scene_timer_update_front_display_blanking(instance);
+
+    busy_scene_timer_update_elapsed_refresh(instance);
 }
 
 static void busy_scene_timer_handle_skip(BusyApp* instance) {
@@ -522,6 +586,12 @@ static void busy_scene_timer_on_enter(void* context) {
         FuriEventLoopTimerTypeOnce,
         instance);
 
+    data->elapsed_timer = furi_event_loop_timer_alloc(
+        instance->event_loop,
+        busy_scene_timer_elapsed_timer_callback,
+        FuriEventLoopTimerTypePeriodic,
+        instance);
+
     data->timer_mode = BusyTimerModeMax;
     data->prev_timer_mode = BusyTimerModeMax;
 
@@ -544,6 +614,7 @@ static void busy_scene_timer_on_exit(void* context) {
         scene_manager_get_scene_data(instance->scene_manager, BusyAppSceneIdTimer);
 
     furi_event_loop_timer_free(data->show_label_timer);
+    furi_event_loop_timer_free(data->elapsed_timer);
 
     furi_pubsub_unsubscribe(data->timer_pubsub, data->timer_sub);
 

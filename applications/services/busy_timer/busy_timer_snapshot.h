@@ -26,6 +26,7 @@ typedef struct {
 
 typedef struct {
     BusyTimerSnapshotCommon common;
+    uint32_t time_elapsed_ms; /**< Count-up time spent in the activity so far. */
 } BusyTimerSnapshotInfinite;
 
 typedef struct {

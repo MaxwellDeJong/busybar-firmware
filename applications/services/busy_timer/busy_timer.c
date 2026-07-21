@@ -312,6 +312,23 @@ bool busy_timer_is_running(const BusyTimer* instance) {
     return instance->is_timer_running;
 }
 
+// Elapsed time spent in the current activity. Bounded modes accumulate
+// time_elapsed_s via the poll tick; INFINITE has no poll, so its elapsed is derived
+// on demand from the wall clock: the seconds banked before the current run segment
+// (time_elapsed_s) plus the time since it (re)started (prev_tick_timestamp_ms).
+static uint32_t busy_timer_calc_live_elapsed_s(const BusyTimer* instance) {
+    uint32_t elapsed_s = instance->time_elapsed_s;
+
+    if(instance->timer_config.mode == BusyTimerModeInfinite && instance->is_timer_running) {
+        const time_t now_ms = furi_hal_rtc_get_timestamp_ms();
+        if(now_ms > instance->prev_tick_timestamp_ms) {
+            elapsed_s += MS_TO_S((uint32_t)(now_ms - instance->prev_tick_timestamp_ms));
+        }
+    }
+
+    return elapsed_s;
+}
+
 static void busy_timer_start_timer(BusyTimer* instance) {
     if(instance->timer_config.mode != BusyTimerModeInfinite) {
         furi_event_loop_timer_start(instance->poll_timer, POLL_TIMER_PERIOD_MS);
@@ -322,6 +339,11 @@ static void busy_timer_start_timer(BusyTimer* instance) {
 }
 
 static void busy_timer_stop_timer(BusyTimer* instance) {
+    // Bank the elapsed seconds of the current INFINITE run segment before its clock
+    // reference is dropped (pause/stop), so the on-demand elapsed stays monotonic.
+    // No-op for bounded modes and for an already-stopped timer.
+    instance->time_elapsed_s = busy_timer_calc_live_elapsed_s(instance);
+
     furi_event_loop_timer_stop(instance->poll_timer);
     instance->is_timer_running = false;
 }
@@ -442,6 +464,7 @@ static void busy_timer_capture_snapshot(BusyTimer* instance) {
 
             BusyTimerSnapshotInfinite* infinite = &snapshot->infinite;
             busy_timer_fill_snapshot_common(instance, &infinite->common);
+            infinite->time_elapsed_ms = S_TO_MS(busy_timer_calc_live_elapsed_s(instance));
 
         } else if(timer_mode == BusyTimerModeSimple) {
             snapshot->type = BusyTimerSnapshotTypeSimple;
@@ -567,6 +590,9 @@ static void busy_timer_apply_snapshot(BusyTimer* instance, const BusyTimerSnapsh
     } else if(type == BusyTimerSnapshotTypeInfinite) {
         new_mode = BusyTimerModeInfinite;
         new_state = BusyTimerStateWork;
+
+        instance->time_elapsed_s = MS_TO_S(snapshot->infinite.time_elapsed_ms);
+        instance->time_remaining_s = UINT32_MAX;
 
     } else if(type == BusyTimerSnapshotTypeSimple) {
         const BusyTimerSnapshotSimple* simple = &snapshot->simple;
@@ -946,6 +972,7 @@ static void busy_timer_get_run_info_api_message_handler(
     timer_info->state = instance->state;
     timer_info->config = instance->timer_config;
     timer_info->current_interval_idx = instance->current_interval_index;
+    timer_info->time_elapsed_s = busy_timer_calc_live_elapsed_s(instance);
 }
 
 static void busy_timer_get_snapshot_api_message_handler(

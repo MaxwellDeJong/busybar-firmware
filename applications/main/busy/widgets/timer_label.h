@@ -58,6 +58,16 @@ Widget* timer_label_get_base(TimerLabel* instance);
 void timer_label_set_time(TimerLabel* instance, uint32_t time_s);
 
 /**
+ * @brief Select the caption shown beneath the time.
+ *
+ * Bounded timers count down ("LEFT"); unbounded activities count up ("SPENT").
+ *
+ * @param[in,out] instance pointer to the TimerLabel instance to be modified
+ * @param[in] counting_up @c true for the count-up caption, @c false for countdown
+ */
+void timer_label_set_counting_up(TimerLabel* instance, bool counting_up);
+
+/**
  * @brief Set the current preset (affects countdown blinking)
  *
  * @param[in,out] instance pointer to the TimerLabel instance to be modified

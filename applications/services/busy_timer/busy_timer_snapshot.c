@@ -14,6 +14,8 @@
 
 #define KEY_SNAPSHOT_SIMPLE_TIME_LEFT "time_left_ms"
 
+#define KEY_SNAPSHOT_INFINITE_ELAPSED "time_elapsed_ms"
+
 #define KEY_SNAPSHOT_INTERVAL_CURRENT_ID    "current_interval"
 #define KEY_SNAPSHOT_INTERVAL_CURRENT_TOTAL "current_interval_time_total_ms"
 #define KEY_SNAPSHOT_INTERVAL_CURRENT_LEFT  "current_interval_time_left_ms"
@@ -41,6 +43,7 @@ static void busy_timer_snapshot_serialize_snapshot_infinite(
     cJSON* json,
     const BusyTimerSnapshotInfinite* infinite) {
     busy_timer_snapshot_serialize_snapshot_common(json, &infinite->common);
+    cJSON_AddNumberToObject(json, KEY_SNAPSHOT_INFINITE_ELAPSED, infinite->time_elapsed_ms);
 }
 
 static void busy_timer_snapshot_serialize_snapshot_simple(
@@ -105,7 +108,16 @@ static bool busy_timer_snapshot_deserialize_snapshot_common(
 static bool busy_timer_snapshot_deserialize_snapshot_infinite(
     const cJSON* json,
     BusyTimerSnapshotInfinite* infinite) {
-    return busy_timer_snapshot_deserialize_snapshot_common(json, &infinite->common);
+    if(!busy_timer_snapshot_deserialize_snapshot_common(json, &infinite->common)) {
+        return false;
+    }
+
+    // Optional for backward compatibility: absent means an older snapshot with no
+    // recorded elapsed time, which restores as zero.
+    const cJSON* item = cJSON_GetObjectItem(json, KEY_SNAPSHOT_INFINITE_ELAPSED);
+    infinite->time_elapsed_ms = cJSON_IsNumber(item) ? cJSON_GetNumberValue(item) : 0;
+
+    return true;
 }
 
 static bool busy_timer_snapshot_deserialize_snapshot_simple(
