@@ -1,13 +1,14 @@
 {
   "sort_order": 10,
   "title": "Rec Reading",
+  "icon": "book_blue",
   "id": "b1a70000-0000-4000-8000-000000000001",
   "profile_timestamp_ms": 0,
   "timer_settings": {
     "type": "INFINITE"
   },
   "busy_bar_settings": {
-    "theme": "chill_time",
+    "theme": "reading_blue",
     "show_work_phase_only": false,
     "trigger_smart_home": false
   }
