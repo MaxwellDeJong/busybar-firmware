@@ -3,6 +3,7 @@
 #include <gui/modules/menu.h>
 #include <gui/modules/anim_player.h>
 
+#define ITEM_LABEL_ACTIVITY   "Activity"
 #define ITEM_LABEL_TIMER      "Timer"
 #define ITEM_LABEL_THEME      "Theme"
 #define ITEM_LABEL_SMART_HOME "Smart home"
@@ -19,6 +20,7 @@ typedef struct {
 } BusySceneSetup;
 
 typedef enum {
+    BusySceneSetupMenuIndexActivity,
     BusySceneSetupMenuIndexTimer,
     BusySceneSetupMenuIndexTheme,
     BusySceneSetupMenuIndexSmartHome,
@@ -54,6 +56,14 @@ static void busy_scene_setup_on_enter(void* context) {
 
         menu_add_item(
             data->front_menu,
+            ITEM_LABEL_ACTIVITY,
+            ITEM_SUBLABEL_DUMMY,
+            BUSY_IMG_PATH("hourglass_8x8.image"),
+            BusySceneSetupMenuIndexActivity,
+            busy_scene_setup_menu_callback,
+            instance);
+        menu_add_item(
+            data->front_menu,
             ITEM_LABEL_TIMER,
             mode_name,
             BUSY_IMG_PATH("hourglass_8x8.image"),
@@ -80,6 +90,14 @@ static void busy_scene_setup_on_enter(void* context) {
         menu_set_selected_item_index(data->front_menu, data->menu_idx);
 
         data->back_menu = menu_alloc(instance->back_window);
+        menu_add_item(
+            data->back_menu,
+            ITEM_LABEL_ACTIVITY,
+            ITEM_SUBLABEL_DUMMY,
+            BUSY_IMG_PATH("hourglass_11x11.image"),
+            BusySceneSetupMenuIndexActivity,
+            NULL,
+            NULL);
         menu_add_item(
             data->back_menu,
             ITEM_LABEL_TIMER,
@@ -136,7 +154,11 @@ static bool busy_scene_setup_on_event(const SceneManagerEvent* event, void* cont
     if(event->type == SceneManagerEventTypeCustom) {
         data->menu_idx = event->event;
 
-        if(event->event == BusySceneSetupMenuIndexTimer) {
+        if(event->event == BusySceneSetupMenuIndexActivity) {
+            busy_push_location(instance, "ACTIVITY");
+            scene_manager_next_scene(instance->scene_manager, BusyAppSceneIdSetupActivity);
+
+        } else if(event->event == BusySceneSetupMenuIndexTimer) {
             busy_push_location(instance, "TIMER");
             scene_manager_next_scene(instance->scene_manager, BusyAppSceneIdSetupTimer);
 
