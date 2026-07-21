@@ -7,6 +7,7 @@
 
 #define KEY_PROFILE_SORT_ORDER     "sort_order"
 #define KEY_PROFILE_TITLE          "title"
+#define KEY_PROFILE_ICON           "icon"
 #define KEY_PROFILE_TIMER_SETTINGS "timer_settings"
 #define KEY_PROFILE_TIMESTAMP      "profile_timestamp_ms"
 #define KEY_PROFILE_ID             "id"
@@ -19,6 +20,11 @@ static void busy_timer_profile_serialize_metadata(cJSON* json, const BusyTimerMe
     cJSON_AddNumberToObject(json, KEY_PROFILE_SORT_ORDER, metadata->sort_order);
     cJSON_AddStringToObject(json, KEY_PROFILE_TITLE, metadata->title);
     cJSON_AddStringToObject(json, KEY_PROFILE_ID, metadata->card_id);
+
+    // Only emit the icon when set, so icon-less profiles round-trip unchanged.
+    if(metadata->icon[0] != '\0') {
+        cJSON_AddStringToObject(json, KEY_PROFILE_ICON, metadata->icon);
+    }
 }
 
 static void busy_timer_profile_serialize_timer_settings(
@@ -67,6 +73,14 @@ static bool
         }
 
         strlcpy(metadata->card_id, cJSON_GetStringValue(item), sizeof(metadata->card_id));
+
+        // Icon is optional: absent or non-string leaves it empty (default hourglass).
+        item = cJSON_GetObjectItem(json, KEY_PROFILE_ICON);
+        if(cJSON_IsString(item)) {
+            strlcpy(metadata->icon, cJSON_GetStringValue(item), sizeof(metadata->icon));
+        } else {
+            metadata->icon[0] = '\0';
+        }
 
         success = true;
     } while(false);

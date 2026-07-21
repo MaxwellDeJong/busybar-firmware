@@ -7,13 +7,27 @@
 
 #include <furi_hal_rtc.h>
 
-#define ACTIVITY_SUMMARY_LEN (16)
+#define ACTIVITY_SUMMARY_LEN   (16)
+#define ACTIVITY_ICON_PATH_LEN (64)
 
 typedef struct {
     ActivityList* list;
     Menu* front_menu;
     Menu* back_menu;
 } BusySceneSetupActivity;
+
+// Build the menu icon path for an activity at a given size, e.g.
+// "/ext/apps_assets/busy/images/book_8x8.image". Activities without an icon fall
+// back to the default hourglass, matching the other Setup menu rows.
+static void busy_scene_setup_activity_format_icon(
+    const BusyTimerProfile* profile,
+    const char* size_suffix,
+    char* out,
+    size_t out_size) {
+    const char* base =
+        (profile->metadata.icon[0] != '\0') ? profile->metadata.icon : "hourglass";
+    snprintf(out, out_size, "%s/%s_%s.image", BUSY_ASSETS_PATH("images"), base, size_suffix);
+}
 
 // Build a short sub-label describing the timer, e.g. "25/5 x4", "45 min", "Open".
 static void busy_scene_setup_activity_format_summary(
@@ -74,13 +88,20 @@ static void busy_scene_setup_activity_on_enter(void* context) {
             char summary[ACTIVITY_SUMMARY_LEN];
             busy_scene_setup_activity_format_summary(activity, summary, sizeof(summary));
 
-            // menu_add_item requires a non-NULL icon; use a checkmark for the active one.
+            // The active row is marked with a checkmark; the rest show the activity's
+            // own icon (or the hourglass fallback). menu_add_item consumes the icon
+            // path synchronously, so these stack buffers are safe.
+            char front_icon[ACTIVITY_ICON_PATH_LEN];
+            char back_icon[ACTIVITY_ICON_PATH_LEN];
+            busy_scene_setup_activity_format_icon(activity, "8x8", front_icon, sizeof(front_icon));
+            busy_scene_setup_activity_format_icon(
+                activity, "11x11", back_icon, sizeof(back_icon));
+
             menu_add_item(
                 data->front_menu,
                 activity->metadata.title,
                 summary,
-                is_active ? SHARED_IMG_PATH("checkmark_front_8x8.image") :
-                            BUSY_IMG_PATH("hourglass_8x8.image"),
+                is_active ? SHARED_IMG_PATH("checkmark_front_8x8.image") : front_icon,
                 i,
                 busy_scene_setup_activity_menu_callback,
                 instance);
@@ -89,8 +110,7 @@ static void busy_scene_setup_activity_on_enter(void* context) {
                 data->back_menu,
                 activity->metadata.title,
                 summary,
-                is_active ? SHARED_IMG_PATH("checkmark_back_11x11.image") :
-                            BUSY_IMG_PATH("hourglass_11x11.image"),
+                is_active ? SHARED_IMG_PATH("checkmark_back_11x11.image") : back_icon,
                 i,
                 NULL,
                 NULL);

@@ -34,6 +34,7 @@
 
 #define BUSY_TIMER_CARD_ID_LEN (36)
 #define BUSY_TIMER_TITLE_LEN   (32 * 4)
+#define BUSY_TIMER_ICON_LEN    (31)
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,6 +51,9 @@ typedef struct {
     int sort_order;
     char title[BUSY_TIMER_TITLE_LEN + 1];
     char card_id[BUSY_TIMER_CARD_ID_LEN + 1];
+    // Optional icon base name (e.g. "book"); the menu appends the size + extension
+    // (`_8x8.image` / `_11x11.image`). Empty means fall back to the default hourglass.
+    char icon[BUSY_TIMER_ICON_LEN + 1];
 } BusyTimerMetadata;
 
 typedef struct {
