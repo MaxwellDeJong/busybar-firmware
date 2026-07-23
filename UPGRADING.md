@@ -125,8 +125,9 @@ Run **in order**; each step gates the next.
 2. **Recorder self-test.** From the project root:
    `python3 activity_recorder.py --self-test` — confirms host-side session logic
    (unaffected by firmware, but free insurance before you rely on the log).
-3. **Read the intercom pin for this release** (see §5.1) and flash:
-   `./fbt flash_usb INTERCOM_FORCE_VERSION=<hash>` (see the plan §9.3).
+3. **Flash with the intercom pin** (see §5.1):
+   `./fbt flash_usb INTERCOM_FORCE_VERSION=07e850ec`. The pin does not change on an
+   upstream sync (the stock Si917 is left in place); never flash without it.
 4. **Linchpin check** — the one that catches silent semantic drift. On the device,
    Setup → Activity → select one, then:
    `curl -s http://<addr>/api/busy/snapshot` and confirm `snapshot.card_id`
@@ -140,19 +141,42 @@ Run **in order**; each step gates the next.
 If any of 4–6 fail, diff the relevant `busy_timer` source against the version you
 built against and adjust the accept handler / recorder accordingly.
 
-### 5.1 The intercom pin changes every release
+### 5.1 The intercom pin
 
-`INTERCOM_FORCE_VERSION` must equal the **Si917's** firmware git hash, which for a
-release equals that release's commit hash. Because we flash U5-only and leave the
-stock Si917 in place, read it from the device while it is on stock/known firmware:
+`INTERCOM_FORCE_VERSION` must equal the **Si917's** handshake string, which is its
+firmware git hash. Because we flash U5-only and leave the stock Si917 in place, that
+value is **`07e850ec`** (stock 1.0.2's commit hash) and does **not** change when you
+sync upstream — the Si917 stays stock. So the normal flow is simply:
 
 ```bash
-curl -s http://<addr>/api/status/firmware   # → "commit_hash":"XXXXXXXX"
+./fbt flash_usb INTERCOM_FORCE_VERSION=07e850ec
 ```
 
-Use that `commit_hash` as the pin. Flashing without it (or with a stale value)
-drops the device to the "System error, restart device" intercom-mismatch screen.
-Full explanation: plan §9.3.
+**Reading the pin from the device — mind which field.** `/api/status/firmware`
+exposes two version fields that mean different things:
+
+- `commit_hash` — the **U5's own** git hash. It equals the pin **only when the device
+  is on stock firmware**; on an already-custom U5 it is the U5's hash (e.g.
+  `ff197daa`), **not** the pin.
+- `intercom_version` — the U5's **forced control string** (from
+  `intercom_get_version_string()`, NOT read from the Si917). On a custom U5 this
+  echoes the last pin used.
+
+So: on stock → read `commit_hash`; on a custom U5 → read `intercom_version`, or just
+reuse `07e850ec`.
+
+```bash
+curl -s http://<addr>/api/status/firmware   # → "commit_hash":"…","intercom_version":"07e850ec"
+```
+
+`flash_usb` runs a pre-flight (`update_over_http.py --intercom-version`) that aborts
+before upload if the device's current `intercom_version` ≠ the pin, so a *wrong* pin
+is refused. The genuine failure mode is omitting the pin entirely: no guard runs and
+the U5 boots with a mismatched string → "System error, restart device" screen.
+Verify after: `intercom_version` still `07e850ec` and `nwp_version`/`matter_version`
+are populated (proof the intercom link handshook). Full procedure — including the
+first-flash-from-stock manual-upload case and recovery — is in the **flash-firmware**
+skill (`.claude/skills/flash-firmware/`); background in plan §9.3.
 
 ---
 

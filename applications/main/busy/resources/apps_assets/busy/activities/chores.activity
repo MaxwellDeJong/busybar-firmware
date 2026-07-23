@@ -1,0 +1,15 @@
+{
+  "sort_order": 70,
+  "title": "Chores",
+  "icon": "house",
+  "id": "b1a70000-0000-4000-8000-000000000007",
+  "profile_timestamp_ms": 0,
+  "timer_settings": {
+    "type": "INFINITE"
+  },
+  "busy_bar_settings": {
+    "theme": "chores",
+    "show_work_phase_only": false,
+    "trigger_smart_home": false
+  }
+}
