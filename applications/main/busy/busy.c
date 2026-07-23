@@ -191,7 +191,31 @@ static BusyApp* busy_alloc(const char* arg) {
     furi_record_create(RECORD_BUSY_APP, instance);
 
     if(instance->run_mode == BusyAppRunModeNormal) {
-        scene_manager_next_scene(instance->scene_manager, BusyAppSceneIdStart);
+        if(instance->preset_id == BusyAppPresetIdCustom) {
+            // Switch on Custom: land directly in the activity picker instead of the
+            // Start menu (in practice every Custom timer is an activity). Preload the
+            // stack as [Start, SetupActivity] so the Start menu sits underneath and
+            // BACK falls back to it, keeping Setup / Timer / Theme reachable.
+            // scene_manager_next_scenes enters only the LAST scene, so Start's
+            // on_enter is skipped now and runs on the first BACK.
+            //
+            // Start's on_enter normally applies these; replicate them here since it is
+            // skipped. The "ACTIVITY" breadcrumb (matching busy_scene_setup.c) also
+            // balances the picker's BACK handler, which pops a location
+            // unconditionally (nav_bar_pop_location asserts on an empty stack).
+            busy_set_front_display_blanking(instance, false);
+            busy_set_priority(instance, false);
+            with_gui(
+                instance->gui,
+                { widget_set_visible(nav_bar_get_base(instance->nav_bar), true); });
+            busy_push_location(instance, "ACTIVITY");
+
+            const uint32_t scenes[] = {BusyAppSceneIdStart, BusyAppSceneIdSetupActivity};
+            scene_manager_next_scenes(
+                instance->scene_manager, scenes, sizeof(scenes) / sizeof(scenes[0]));
+        } else {
+            scene_manager_next_scene(instance->scene_manager, BusyAppSceneIdStart);
+        }
     }
 
     return instance;
