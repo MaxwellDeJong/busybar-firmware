@@ -124,6 +124,12 @@ static void busy_scene_setup_activity_on_enter(void* context) {
         widget_set_scrollbar_enabled(menu_get_base(data->front_menu), true);
         widget_set_scrollbar_enabled(menu_get_base(data->back_menu), true);
     });
+
+    // Reveal any pending transition overlay. Reaching the picker via BACK from a
+    // running/finished activity prepares a transition (which snapshots and freezes the
+    // old screen); without this the overlay would stay up hiding the picker. It's a
+    // no-op on the forward paths (dial->Custom, Setup->Activity), which prepare none.
+    busy_start_transition(instance);
 }
 
 static void busy_scene_setup_activity_accept(BusyApp* instance, uint32_t index) {

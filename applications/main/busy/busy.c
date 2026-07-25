@@ -325,6 +325,16 @@ void busy_pop_location(BusyApp* instance) {
 
 bool busy_return_to_start_scene(BusyApp* instance) {
     furi_assert(instance);
+
+    // If the activity picker is on the stack (the Custom-dial or Setup->Activity
+    // flow), exiting or finishing a running activity should land back on the picker;
+    // only the picker's own BACK then falls through to the Start menu. Otherwise (the
+    // plain Start->Start flow) return to Start as before.
+    if(scene_manager_has_previous_scene(instance->scene_manager, BusyAppSceneIdSetupActivity)) {
+        return scene_manager_search_and_switch_to_previous_scene(
+            instance->scene_manager, BusyAppSceneIdSetupActivity);
+    }
+
     return scene_manager_search_and_switch_to_previous_scene(
         instance->scene_manager, BusyAppSceneIdStart);
 }
