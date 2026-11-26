@@ -508,9 +508,7 @@ static void busy_timer_store_saved_state(BusyTimer* instance) {
     }
 }
 
-static void busy_timer_publish_last_known_snapshot(const BusyTimer* instance) {
-    busy_timer_notify_snapshot_created(instance);
-
+static void busy_timer_mqtt_publish_last_known_snapshot(const BusyTimer* instance) {
     const BusyTimerSnapshot* snapshot = &instance->last_known_snapshot;
     char* snapshot_str = busy_timer_snapshot_serialize(snapshot);
     furi_check(snapshot_str);
@@ -523,6 +521,11 @@ static void busy_timer_publish_last_known_snapshot(const BusyTimer* instance) {
         strlen(snapshot_str));
 
     free(snapshot_str);
+}
+
+static void busy_timer_publish_last_known_snapshot(const BusyTimer* instance) {
+    busy_timer_notify_snapshot_created(instance);
+    busy_timer_mqtt_publish_last_known_snapshot(instance);
 }
 
 static void busy_timer_publish_profile(BusyTimer* instance, BusyTimerProfileId profile_id) {
@@ -1064,6 +1067,54 @@ static void busy_timer_handle_matter_api_message_handler(
     busy_timer_smart_home_handle_switch_state(instance, switch_state);
 }
 
+static void busy_timer_republish_snapshot_api_message_handler(
+    BusyTimer* instance,
+    BusyTimerApiMessageData* data) {
+    UNUSED(data);
+
+    if(instance->last_known_snapshot.timestamp_ms == 0) {
+        return; // Nothing captured since first boot
+    }
+
+    FURI_LOG_I(
+        TAG,
+        "MQTT linked, republishing snapshot with timestamp %llu",
+        instance->last_known_snapshot.timestamp_ms);
+
+    // MQTT only: the state itself has not changed, so local listeners (state
+    // publisher, smart home) need no SnapshotCreated event.
+    busy_timer_mqtt_publish_last_known_snapshot(instance);
+}
+
+// A snapshot is published once, on a state change, and never retried: if the
+// connection was half-open when it went out (e.g. the broker host lost power
+// without closing the socket), it is lost and peers stay out of date until the
+// next change. Republish the last known snapshot whenever the link comes (back)
+// up. It keeps its original timestamp, so a peer that already has it discards
+// it as a duplicate, and one that missed it learns when the change happened.
+static void busy_timer_mqtt_events_pubsub_callback(const void* msg, void* context) {
+    furi_assert(msg);
+    furi_assert(context);
+
+    BusyTimer* instance = context;
+    const MqttEvent* mqtt_event = msg;
+
+    if((mqtt_event->type == MqttEventTypeStatusChanged) &&
+       (mqtt_event->status_changed.status == MqttStatusConnectedLinked)) {
+        BusyTimerApiMessage message = {
+            .type = BusyTimerApiMessageTypeRepublishSnapshot,
+            .lock = NULL,
+        };
+
+        // Runs on the MQTT thread. Never block here: the timer thread may itself
+        // be blocked inside mqtt_publish() waiting on this thread, and the API
+        // queue is small. Dropping is safe; the republish is best effort.
+        if(furi_message_queue_put(instance->api_queue, &message, 0) != FuriStatusOk) {
+            FURI_LOG_W(TAG, "API queue full, skipping snapshot republish");
+        }
+    }
+}
+
 // Service
 
 static void busy_timer_load_settings(BusyTimer* instance) {
@@ -1134,6 +1185,9 @@ static BusyTimer* busy_timer_alloc(void) {
     busy_timer_load_settings(instance);
     busy_timer_load_saved_state(instance);
 
+    furi_pubsub_subscribe(
+        mqtt_get_pubsub(instance->mqtt), busy_timer_mqtt_events_pubsub_callback, instance);
+
     furi_record_create(RECORD_BUSY_TIMER, instance);
 
     return instance;
@@ -1164,4 +1218,6 @@ static const BusyTimerApiMessageHandler
         [BusyTimerApiMessageTypeGetPreset] = busy_timer_get_preset_api_message_handler,
         [BusyTimerApiMessageTypeSetPreset] = busy_timer_set_preset_api_message_handler,
         [BusyTimerApiMessageTypeHandleMatter] = busy_timer_handle_matter_api_message_handler,
+        [BusyTimerApiMessageTypeRepublishSnapshot] =
+            busy_timer_republish_snapshot_api_message_handler,
 };
