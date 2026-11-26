@@ -32,6 +32,7 @@ typedef enum {
     BusyTimerApiMessageTypeGetPreset,
     BusyTimerApiMessageTypeSetPreset,
     BusyTimerApiMessageTypeHandleMatter,
+    BusyTimerApiMessageTypeRepublishSnapshot,
 
     BusyTimerApiMessageTypeMax,
 } BusyTimerApiMessageType;
